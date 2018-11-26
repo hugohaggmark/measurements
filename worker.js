@@ -127,7 +127,7 @@ const getAndStoreMeasurements = () => {
 };
 
 const loop = () => {
-  setTimeout(() => {
+  setInterval(() => {
     getAndStoreMeasurements();
     loop();
   }, parseInt(process.env.interval, 10));
