@@ -118,7 +118,7 @@ const getAndStoreMeasurements = () => {
         roomTemp: getRawValueFromParameterId(allParameters, process.env.room_temp_id),
         returnTemp: getRawValueFromParameterId(allParameters, process.env.return_temp_id),
         calculatedFlowTemp: getRawValueFromParameterId(allParameters, process.env.calculated_flow_temp_id),
-        heatMediumFlowTemp: getRawValueFromParameterId(allParameters, process.env.heat_medium_flow_Id),
+        heatMediumFlowTemp: getRawValueFromParameterId(allParameters, process.env.heat_medium_flow_id),
         electricalAdditionPower: getRawValueFromParameterId(allParameters, process.env.electrical_addition_power_id),
         created: new Date().getTime(),
       }).save();
