@@ -126,17 +126,12 @@ const getAndStoreMeasurements = () => {
   });
 };
 
-const loop = () => {
-  setInterval(() => {
-    getAndStoreMeasurements();
-    loop();
-  }, parseInt(process.env.interval, 10));
-};
-
 mongoose.connect(connectionString);
 const db = mongoose.connection;
 db.on('error', console.error.bind(console, 'connection error:'));
 db.once('open', () => {
   getAndStoreMeasurements();
-  loop();
+  setInterval(() => {
+    getAndStoreMeasurements();
+  }, parseInt(process.env.interval, 10));
 });
