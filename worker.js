@@ -1,25 +1,9 @@
 /* eslint-disable no-console */
 require('dotenv').config();
 
-const mongoose = require('mongoose');
 const request = require('request-promise');
-
-const connectionString = `mongodb://${process.env.db_write_user}:${process.env.db_write_password}@${
-  process.env.db_name
-}`;
-
-const measurementSchema = new mongoose.Schema({
-  outdoorTemp: mongoose.Schema.Types.Number,
-  roomTemp: mongoose.Schema.Types.Number,
-  returnTemp: mongoose.Schema.Types.Number,
-  calculatedFlowTemp: mongoose.Schema.Types.Number,
-  heatMediumFlowTemp: mongoose.Schema.Types.Number,
-  electricalAdditionPower: mongoose.Schema.Types.Number,
-  created: mongoose.Schema.Types.Number,
-});
-
-var Measurement = mongoose.model('Measurement', measurementSchema);
-
+const { Client } = require('pg');
+const systemId = process.env.system_id;
 let nextAccessToken = null;
 let nextRefreshToken = null;
 
@@ -99,12 +83,14 @@ const getRawValueFromParameterId = (allParameters, processId) => {
 const getAndStoreMeasurements = () => {
   print();
   refreshToken().then(() => {
-    const statusPromise = callNibeApi('https://api.nibeuplink.com/api/v1/systems/58248/serviceinfo/categories/STATUS');
+    const statusPromise = callNibeApi(
+      `https://api.nibeuplink.com/api/v1/systems/${systemId}/serviceinfo/categories/STATUS`,
+    );
     const system1Promise = callNibeApi(
-      'https://api.nibeuplink.com/api/v1/systems/58248/serviceinfo/categories/SYSTEM_1',
+      `https://api.nibeuplink.com/api/v1/systems/${systemId}/serviceinfo/categories/SYSTEM_1`,
     );
     const additionPromise = callNibeApi(
-      'https://api.nibeuplink.com/api/v1/systems/58248//serviceinfo/categories/ADDITION',
+      `https://api.nibeuplink.com/api/v1/systems/${systemId}//serviceinfo/categories/ADDITION`,
     );
     Promise.all([statusPromise, system1Promise, additionPromise]).then((promises) => {
       const allParameters = promises.reduce((all, promise) => {
@@ -113,23 +99,41 @@ const getAndStoreMeasurements = () => {
         }
         return all.concat(promise.data);
       }, []);
-      new Measurement({
+      const data = {
         outdoorTemp: getRawValueFromParameterId(allParameters, process.env.outdoor_temp_id),
         roomTemp: getRawValueFromParameterId(allParameters, process.env.room_temp_id),
         returnTemp: getRawValueFromParameterId(allParameters, process.env.return_temp_id),
         calculatedFlowTemp: getRawValueFromParameterId(allParameters, process.env.calculated_flow_temp_id),
         heatMediumFlowTemp: getRawValueFromParameterId(allParameters, process.env.heat_medium_flow_id),
         electricalAdditionPower: getRawValueFromParameterId(allParameters, process.env.electrical_addition_power_id),
-        created: new Date().getTime(),
-      }).save();
+        created: new Date(),
+      };
+
+      const query = {
+        text:
+          'INSERT INTO measurements(outdoor_temp, room_temp, return_temp, calculated_flow_temp, heat_medium_flow, electrical_addition_power, ts) VALUES($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+        values: [
+          data.outdoorTemp / 10,
+          data.roomTemp / 10,
+          data.returnTemp / 10,
+          data.calculatedFlowTemp / 10,
+          data.heatMediumFlowTemp / 10,
+          data.electricalAdditionPower / 10,
+          data.created,
+        ],
+      };
+
+      client
+        .query(query)
+        .then((res) => console.log('Inserted ', res.rows[0]))
+        .catch((e) => console.error(e.stack));
     });
   });
 };
 
-mongoose.connect(connectionString);
-const db = mongoose.connection;
-db.on('error', console.error.bind(console, 'connection error:'));
-db.once('open', () => {
+const client = new Client(process.env.connectionstring);
+client.connect().then(() => {
+  console.log('Connected to database');
   getAndStoreMeasurements();
   setInterval(() => {
     getAndStoreMeasurements();
