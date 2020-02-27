@@ -80,62 +80,71 @@ const getRawValueFromParameterId = (allParameters, processId) => {
   return foundParameter !== undefined ? foundParameter.rawValue : null;
 };
 
-const getAndStoreMeasurements = () => {
+const getAndStoreMeasurements = async (client) => {
   print();
-  refreshToken().then(() => {
-    const statusPromise = callNibeApi(
-      `https://api.nibeuplink.com/api/v1/systems/${systemId}/serviceinfo/categories/STATUS`,
-    );
-    const system1Promise = callNibeApi(
-      `https://api.nibeuplink.com/api/v1/systems/${systemId}/serviceinfo/categories/SYSTEM_1`,
-    );
-    const additionPromise = callNibeApi(
-      `https://api.nibeuplink.com/api/v1/systems/${systemId}//serviceinfo/categories/ADDITION`,
-    );
-    Promise.all([statusPromise, system1Promise, additionPromise]).then((promises) => {
-      const allParameters = promises.reduce((all, promise) => {
-        if (promise.data === null) {
-          return allParameters;
-        }
-        return all.concat(promise.data);
-      }, []);
-      const data = {
-        outdoorTemp: getRawValueFromParameterId(allParameters, process.env.outdoor_temp_id),
-        roomTemp: getRawValueFromParameterId(allParameters, process.env.room_temp_id),
-        returnTemp: getRawValueFromParameterId(allParameters, process.env.return_temp_id),
-        calculatedFlowTemp: getRawValueFromParameterId(allParameters, process.env.calculated_flow_temp_id),
-        heatMediumFlowTemp: getRawValueFromParameterId(allParameters, process.env.heat_medium_flow_id),
-        electricalAdditionPower: getRawValueFromParameterId(allParameters, process.env.electrical_addition_power_id),
-        created: new Date(),
-      };
+  await refreshToken();
 
-      const query = {
-        text:
-          'INSERT INTO measurements(outdoor_temp, room_temp, return_temp, calculated_flow_temp, heat_medium_flow, electrical_addition_power, ts) VALUES($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-        values: [
-          data.outdoorTemp / 10,
-          data.roomTemp / 10,
-          data.returnTemp / 10,
-          data.calculatedFlowTemp / 10,
-          data.heatMediumFlowTemp / 10,
-          data.electricalAdditionPower / 10,
-          data.created,
-        ],
-      };
+  const statusPromise = callNibeApi(
+    `https://api.nibeuplink.com/api/v1/systems/${systemId}/serviceinfo/categories/STATUS`,
+  );
+  const system1Promise = callNibeApi(
+    `https://api.nibeuplink.com/api/v1/systems/${systemId}/serviceinfo/categories/SYSTEM_1`,
+  );
+  const additionPromise = callNibeApi(
+    `https://api.nibeuplink.com/api/v1/systems/${systemId}//serviceinfo/categories/ADDITION`,
+  );
 
-      client
-        .query(query)
-        .then((res) => console.log('Inserted ', res.rows[0]))
-        .catch((e) => console.error(e.stack));
-    });
-  });
+  const promises = await Promise.all([statusPromise, system1Promise, additionPromise]);
+  const allParameters = promises.reduce((all, promise) => {
+    if (promise.data === null) {
+      return allParameters;
+    }
+    return all.concat(promise.data);
+  }, []);
+
+  const data = {
+    outdoorTemp: getRawValueFromParameterId(allParameters, process.env.outdoor_temp_id),
+    roomTemp: getRawValueFromParameterId(allParameters, process.env.room_temp_id),
+    returnTemp: getRawValueFromParameterId(allParameters, process.env.return_temp_id),
+    calculatedFlowTemp: getRawValueFromParameterId(allParameters, process.env.calculated_flow_temp_id),
+    heatMediumFlowTemp: getRawValueFromParameterId(allParameters, process.env.heat_medium_flow_id),
+    electricalAdditionPower: getRawValueFromParameterId(allParameters, process.env.electrical_addition_power_id),
+    created: new Date(),
+  };
+
+  const query = {
+    text:
+      'INSERT INTO measurements(outdoor_temp, room_temp, return_temp, calculated_flow_temp, heat_medium_flow, electrical_addition_power, ts) VALUES($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+    values: [
+      data.outdoorTemp / 10,
+      data.roomTemp / 10,
+      data.returnTemp / 10,
+      data.calculatedFlowTemp / 10,
+      data.heatMediumFlowTemp / 10,
+      data.electricalAdditionPower / 10,
+      data.created,
+    ],
+  };
+
+  try {
+    const result = await client.query(query);
+    console.log('Inserted ', result.rows[0]);
+  } catch (err) {
+    console.error(err.stack);
+  }
 };
 
-const client = new Client(process.env.connectionstring);
-client.connect().then(() => {
-  console.log('Connected to database');
-  getAndStoreMeasurements();
-  setInterval(() => {
-    getAndStoreMeasurements();
-  }, parseInt(process.env.interval, 10));
-});
+const runJob = async () => {
+  try {
+    const client = new Client(process.env.connectionstring);
+    await client.connect();
+    console.log('Connected to database');
+    await getAndStoreMeasurements(client);
+    process.exit();
+  } catch (err) {
+    console.error(err);
+    process.exit(1);
+  }
+};
+
+runJob();
